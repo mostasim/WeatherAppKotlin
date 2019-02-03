@@ -5,7 +5,7 @@ import android.net.ConnectivityManager
 import okhttp3.Interceptor
 import okhttp3.Response
 import tech.mbsoft.weatherapp.internal.NoConnectivityException
-import java.io.IOException
+
 
 class ConnectivityInterceptorImpl (
         context: Context

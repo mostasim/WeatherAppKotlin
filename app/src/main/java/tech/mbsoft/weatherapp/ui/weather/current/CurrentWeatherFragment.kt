@@ -1,27 +1,26 @@
 package tech.mbsoft.weatherapp.ui.weather.current
 
-import androidx.lifecycle.ViewModelProviders
 import android.os.Bundle
-import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProviders
 import kotlinx.android.synthetic.main.current_weather_fragment.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-
+import org.kodein.di.KodeinAware
+import org.kodein.di.android.x.closestKodein
+import org.kodein.di.generic.instance
 import tech.mbsoft.weatherapp.R
-import tech.mbsoft.weatherapp.data.network.ApixuWeatherApiService
-import tech.mbsoft.weatherapp.data.network.ConnectivityInterceptorImpl
-import tech.mbsoft.weatherapp.data.network.WeatherNetworkDataSourceImpl
+import tech.mbsoft.weatherapp.internal.glide.GlideApp
+import tech.mbsoft.weatherapp.ui.base.ScopedFragment
 
-class CurrentWeatherFragment : Fragment() {
+class CurrentWeatherFragment : ScopedFragment() ,KodeinAware{
+    override val kodein by closestKodein()
 
-    companion object {
-        fun newInstance() = CurrentWeatherFragment()
-    }
+    private val viewModelFactory : CurrentWeatherViewModelFactory by instance()
+
 
     private lateinit var viewModel: CurrentWeatherViewModel
 
@@ -32,18 +31,75 @@ class CurrentWeatherFragment : Fragment() {
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
-        viewModel = ViewModelProviders.of(this).get(CurrentWeatherViewModel::class.java)
-        // TODO: Use the ViewModel
-        val apiService= ApixuWeatherApiService(ConnectivityInterceptorImpl(this.context!!))
-        val weatherNetworkDataSource = WeatherNetworkDataSourceImpl(apiService)
-        weatherNetworkDataSource.downloadCurrentWeather.observe(this, Observer {
-            textView.text=it.toString()
+        viewModel = ViewModelProviders.of(this,viewModelFactory)
+                .get(CurrentWeatherViewModel::class.java)
+
+        bindUI()
+    }
+
+    private fun bindUI()=launch{
+        val currentWeather=viewModel.weather.await()
+
+        val weatherLocation = viewModel.weatherLocation.await()
+
+        weatherLocation.observe(this@CurrentWeatherFragment, Observer {location->
+            if(location == null) return@Observer
+            updateLocation(location.name)
+
         })
 
-        GlobalScope.launch(Dispatchers.Main) {
-           weatherNetworkDataSource.fetchCurrentWeather("Dhaka","en")
+        currentWeather.observe(this@CurrentWeatherFragment, Observer {
+            if (it==null) return@Observer
 
-        }
+            group_loading.visibility=View.GONE
+            updateDateToToday()
+            updatetemperatures(it.temperature,it.feelsLikeTemperature)
+            updateCondition(it.conditionText)
+            updatePrecipitation(it.precipitationVolume)
+            updateWind(it.windDirection,it.windSpeed)
+            updateVisibility(it.visibilityDistance)
+
+
+            GlideApp.with(this@CurrentWeatherFragment)
+                    .load("http:${it.conditionIconUrl}")
+                    .into(imageView_condition_icon)
+
+        })
+    }
+
+    private fun chooseLocalizedAbbreviation(metric : String, imperial : String) : String {
+        return if(viewModel.isMetric) metric else imperial
+    }
+    private fun updateLocation(location : String) {
+        (activity as? AppCompatActivity)?.supportActionBar?.title = location
+    }
+    private fun updateDateToToday() {
+        (activity as? AppCompatActivity)?.supportActionBar?.title = "Today"
+    }
+
+    private fun updatetemperatures(temperature : Double, feelsLike : Double){
+        val unitAbbreviation = chooseLocalizedAbbreviation("C","F")
+        textView_temperature.text="$temperature$unitAbbreviation"
+        textView_feels_like_temperature.text="Feels Like $feelsLike$unitAbbreviation"
+    }
+
+    private fun updateCondition(condition : String){
+        textView_condition.text = condition
+    }
+
+    private fun updatePrecipitation(precipittion : Double){
+        val unitAbbreviation = chooseLocalizedAbbreviation("mm","in")
+        textView_precipitation.text="Precipitation : $precipittion $unitAbbreviation"
+    }
+
+    private fun updateWind(windDirection : String, windSpeed : Double){
+        val unitAbbreviation = chooseLocalizedAbbreviation("kph","mph")
+        textView_wind.text="Wind: $windDirection, $windSpeed $unitAbbreviation"
+    }
+
+    private fun updateVisibility(visibilityDistance : Double){
+        val unitAbbreviation = chooseLocalizedAbbreviation("km","mi")
+        textView_visibility.text="Visibility : $visibilityDistance $unitAbbreviation"
     }
 
 }
